@@ -1,2 +1,0 @@
-# gmailtracker
-Email tracking app
