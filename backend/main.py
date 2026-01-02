@@ -3,7 +3,8 @@ from fastapi.responses import Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 import datetime, os, requests, urllib.parse, mimetypes
-
+import dotenv as os # Load .env file
+os.load_dotenv()
 # =========================
 # App
 # =========================
@@ -20,9 +21,9 @@ app.add_middleware(
 # =========================
 # Supabase Config
 # =========================
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-BUCKET = os.getenv("SUPABASE_BUCKET", "email-images")
+SUPABASE_URL = os.getenv("SUPABASE_URL") # type: ignore
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # type: ignore
+BUCKET = os.getenv("SUPABASE_BUCKET", "email-images") # type: ignore
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
