@@ -1,9 +1,12 @@
-# main.py
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import Response, RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-import datetime, json, os, requests, urllib.parse, mimetypes
+from supabase import create_client
+import datetime, os, requests, urllib.parse, mimetypes
 
+# =========================
+# App
+# =========================
 app = FastAPI(title="Email Image Tracking Backend")
 
 app.add_middleware(
@@ -15,14 +18,13 @@ app.add_middleware(
 )
 
 # =========================
-# Persistent Storage
+# Supabase Config
 # =========================
-BASE_DIR = os.getenv("DATA_DIR", "/data")
-LOG_FILE = f"{BASE_DIR}/tracking_logs.jsonl"
-IMG_READ_FILE = f"{BASE_DIR}/img_reads.jsonl"
-UPLOAD_FOLDER = f"{BASE_DIR}/uploads"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+BUCKET = os.getenv("SUPABASE_BUCKET", "email-images")
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 1x1 transparent GIF
 ONE_BY_ONE_GIF = bytes.fromhex(
@@ -32,39 +34,28 @@ ONE_BY_ONE_GIF = bytes.fromhex(
 # =========================
 # Helpers
 # =========================
-def ensure_file(path):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    if not os.path.exists(path):
-        open(path, "w", encoding="utf-8").close()
-
-def append_event(path: str, obj: dict):
-    obj.setdefault("time", datetime.datetime.utcnow().isoformat() + "Z")
-    ensure_file(path)
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
-
-def read_jsonl(path: str):
-    ensure_file(path)
-    out = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                out.append(json.loads(line))
-            except:
-                pass
-    return out
+def log_event(table: str, data: dict):
+    data.setdefault("time", datetime.datetime.utcnow().isoformat())
+    supabase.table(table).insert(data).execute()
 
 def already_opened_recent(email, message_id, minutes=10):
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutes)
-    for e in reversed(read_jsonl(LOG_FILE)):
-        if e.get("type") == "pixel_open" and e.get("email") == email:
-            if e.get("message_id") == message_id:
-                try:
-                    t = datetime.datetime.fromisoformat(e["time"].replace("Z", ""))
-                    if t >= cutoff:
-                        return True
-                except:
-                    pass
+
+    res = (
+        supabase.table("tracking_logs")
+        .select("time")
+        .eq("type", "pixel_open")
+        .eq("email", email)
+        .eq("message_id", message_id)
+        .order("time", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    if res.data:
+        t = datetime.datetime.fromisoformat(res.data[0]["time"])
+        return t >= cutoff
+
     return False
 
 # =========================
@@ -80,7 +71,7 @@ def api_img(
     image_param = urllib.parse.unquote_plus(image) if image else None
 
     if not already_opened_recent(email, message_id):
-        append_event(LOG_FILE, {
+        log_event("tracking_logs", {
             "type": "pixel_open",
             "email": email,
             "message_id": message_id,
@@ -96,35 +87,36 @@ def api_img(
         "Content-Disposition": "inline"
     }
 
-    # Serve local image
+    # Serve image from Supabase Storage
     if image_param and not image_param.startswith(("http://", "https://")):
-        fpath = os.path.join(UPLOAD_FOLDER, os.path.basename(image_param))
-        if os.path.exists(fpath):
-            mime, _ = mimetypes.guess_type(fpath)
-            mime = mime or "application/octet-stream"
-            with open(fpath, "rb") as f:
-                content = f.read()
-            append_event(IMG_READ_FILE, {
+        try:
+            file = supabase.storage.from_(BUCKET).download(image_param)
+            mime, _ = mimetypes.guess_type(image_param)
+            log_event("img_reads", {
                 "email": email,
                 "message_id": message_id,
-                "served": "local",
+                "served": "storage",
                 "filename": image_param
             })
-            return Response(content=content, media_type=mime, headers=headers)
+            return Response(content=file, media_type=mime or "image/jpeg", headers=headers)
+        except:
+            pass
 
     # Proxy remote image
     if image_param and image_param.startswith(("http://", "https://")):
         try:
             r = requests.get(image_param, timeout=8)
-            append_event(IMG_READ_FILE, {
+            log_event("img_reads", {
                 "email": email,
                 "message_id": message_id,
                 "served": "remote",
                 "url": image_param
             })
-            return Response(content=r.content,
-                            media_type=r.headers.get("Content-Type", "image/jpeg"),
-                            headers=headers)
+            return Response(
+                content=r.content,
+                media_type=r.headers.get("Content-Type", "image/jpeg"),
+                headers=headers
+            )
         except:
             pass
 
@@ -140,7 +132,7 @@ def api_click(
     message_id: str = None,
     request: Request = None,
 ):
-    append_event(LOG_FILE, {
+    log_event("tracking_logs", {
         "type": "click",
         "email": email,
         "message_id": message_id,
@@ -155,25 +147,22 @@ def api_click(
 # =========================
 @app.get("/tracking/by_email")
 def tracking_by_email(email: str = Query(...)):
-    logs = read_jsonl(LOG_FILE)
-    reads = read_jsonl(IMG_READ_FILE)
+    opens = supabase.table("tracking_logs").select("*").eq("type", "pixel_open").eq("email", email).execute()
+    clicks = supabase.table("tracking_logs").select("*").eq("type", "click").eq("email", email).execute()
+    reads = supabase.table("img_reads").select("*").eq("email", email).execute()
+
     return {
-        "opens": [x for x in logs if x.get("type") == "pixel_open" and x.get("email") == email],
-        "clicks": [x for x in logs if x.get("type") == "click" and x.get("email") == email],
-        "img_reads": [x for x in reads if x.get("email") == email],
+        "opens": opens.data,
+        "clicks": clicks.data,
+        "img_reads": reads.data
     }
 
 @app.get("/tracking/latest")
 def tracking_latest(n: int = 200):
+    events = supabase.table("tracking_logs").select("*").order("time", desc=True).limit(n).execute()
+    reads = supabase.table("img_reads").select("*").order("time", desc=True).limit(n).execute()
+
     return {
-        "events": list(reversed(read_jsonl(LOG_FILE)))[:n],
-        "img_reads": list(reversed(read_jsonl(IMG_READ_FILE)))[:n],
+        "events": events.data,
+        "img_reads": reads.data
     }
-
-@app.get("/tracking/download")
-def download_logs():
-    return FileResponse(LOG_FILE, filename="tracking_logs.jsonl")
-
-@app.get("/tracking/download_imgreads")
-def download_imgreads():
-    return FileResponse(IMG_READ_FILE, filename="img_reads.jsonl")
