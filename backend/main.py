@@ -3,8 +3,11 @@ from fastapi.responses import Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 import datetime, os, requests, urllib.parse, mimetypes
-import dotenv as os # Load .env file
-os.load_dotenv()
+from dotenv import load_dotenv
+
+# Load env
+load_dotenv()
+
 # =========================
 # App
 # =========================
@@ -21,13 +24,15 @@ app.add_middleware(
 # =========================
 # Supabase Config
 # =========================
-SUPABASE_URL = os.getenv("SUPABASE_URL") # type: ignore
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # type: ignore
-BUCKET = os.getenv("SUPABASE_BUCKET", "email-images") # type: ignore
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+BUCKET = os.getenv("SUPABASE_BUCKET", "email-images")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 1x1 transparent GIF
+# =========================
+# 1x1 Transparent Pixel
+# =========================
 ONE_BY_ONE_GIF = bytes.fromhex(
     "47494638396101000100800000ffffff00ff21f90401000000002c000000000100010000020144003b"
 )
@@ -60,7 +65,7 @@ def already_opened_recent(email, message_id, minutes=10):
     return False
 
 # =========================
-# IMAGE + PIXEL TRACKING
+# IMAGE / PIXEL TRACKING
 # =========================
 @app.get("/api/img")
 def api_img(
@@ -88,18 +93,24 @@ def api_img(
         "Content-Disposition": "inline"
     }
 
-    # Serve image from Supabase Storage
+    # Serve from Supabase Storage
     if image_param and not image_param.startswith(("http://", "https://")):
         try:
             file = supabase.storage.from_(BUCKET).download(image_param)
             mime, _ = mimetypes.guess_type(image_param)
+
             log_event("img_reads", {
                 "email": email,
                 "message_id": message_id,
                 "served": "storage",
                 "filename": image_param
             })
-            return Response(content=file, media_type=mime or "image/jpeg", headers=headers)
+
+            return Response(
+                content=file,
+                media_type=mime or "image/jpeg",
+                headers=headers
+            )
         except:
             pass
 
@@ -107,12 +118,14 @@ def api_img(
     if image_param and image_param.startswith(("http://", "https://")):
         try:
             r = requests.get(image_param, timeout=8)
+
             log_event("img_reads", {
                 "email": email,
                 "message_id": message_id,
                 "served": "remote",
                 "url": image_param
             })
+
             return Response(
                 content=r.content,
                 media_type=r.headers.get("Content-Type", "image/jpeg"),
@@ -139,15 +152,16 @@ def api_click(
         "message_id": message_id,
         "redirect": redirect,
         "user_agent": request.headers.get("user-agent"),
-        "remote_addr": request.client.host if request.client else None
+        "remote_addr": request.client.host if request and request.client else None
     })
+
     return RedirectResponse(url=redirect, status_code=302)
 
 # =========================
-# QUERY APIs (FOR STREAMLIT)
+# QUERY APIs
 # =========================
 @app.get("/tracking/by_email")
-def tracking_by_email(email: str = Query(...)):
+def tracking_by_email(email: str):
     opens = supabase.table("tracking_logs").select("*").eq("type", "pixel_open").eq("email", email).execute()
     clicks = supabase.table("tracking_logs").select("*").eq("type", "click").eq("email", email).execute()
     reads = supabase.table("img_reads").select("*").eq("email", email).execute()
