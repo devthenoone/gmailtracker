@@ -5,16 +5,13 @@ import requests
 import pandas as pd
 import urllib.parse
 import base64
-
-st.set_page_config(page_title="Email Tracker Dashboard", layout="wide")
-st.title("📧 Email Tracking Dashboard (File-Based System)")
+import matplotlib.pyplot as plt
 
 # -------------------------
 # Backend URL
 # -------------------------
 backend_url = st.sidebar.text_input("Backend URL", value="https://gmailtracker-3mia.onrender.com")
-if not backend_url.endswith("/"):
-    backend_url = backend_url.rstrip("/")
+backend_url = backend_url.rstrip("/")
 
 st.sidebar.markdown("### What is tracked?")
 st.sidebar.write("- Email opens (pixel load)")
@@ -70,69 +67,16 @@ if st.button("Generate HTML Snippet"):
 <!DOCTYPE HTML>
 <html>
 <body style="font-size: 10pt; font-family: Arial, sans-serif;">
-
 <p>Hello, this is your tracked email.</p>
-
-<!-- Main visible image -->
 <img src="{visible_img_url}" width="200" height="200" alt="Image"><br><br>
-
-<!-- Tracked link -->
 <a href="{click_url}">Click this tracked link</a>
-
-<!-- Invisible 1x1 tracking pixel -->
 <img src="{pixel_only_url}" width="1" height="1" style="display:none;" />
-
-<br><br>
-<!-- ================= SIGNATURE START ================= -->
-
-<table cellspacing="0" cellpadding="0" border="0" 
-       style="COLOR:#000; font-family:Arial; width:500px; background: transparent;">
-<tbody>
-<tr>
-
-<td style="text-align:center;border: 2px solid #000; width:197px">
-    <!-- VISIBLE signature logo 500x500 -->
-    <img style="width:200px; height:200px; border:0;" 
-         src="{signature_img_url}" width="200" height="200" border="0">
-</td>
-
-<td style="border:2px solid #000; padding:10px 10px 10px 24px; width:303px;">
-    <span style="font-size:18pt; color:#000;">John Doe<br></span>
-    <span style="font-size:10pt; line-height:16pt; color:#000;">Sales & Marketing Director, </span>
-    <span style="font-size:10pt; font-weight:bold; color:#000;">My Company</span><br>
-    <span style="font-size:10pt;"><strong>P:</strong> (800) 555-0199<br></span>
-    <span style="font-size:10pt;"><strong>M:</strong> (800) 555-0299<br></span>
-    <span style="font-size:10pt;"><strong>E:</strong>
-        <a href="mailto:john.doe@my-company.com" 
-           style="color:#000; text-decoration:none;">john.doe@my-company.com</a>
-        <br>
-    </span>
-    <span style="font-size:10pt;"><strong>A:</strong> Street, City, ZIP, Country<br></span>
-    <a href="http://www.my-company.com" style="text-decoration:none;">
-        <strong style="color:#000; font-size:10pt;">www.my-company.com</strong>
-    </a>
-</td>
-
-</tr>
-
-<tr>
-<td colspan="2" style="padding-top:11px; text-align:right;">
-<a href="https://www.facebook.com/MyCompany"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/fb.png"></a>
-<a href="https://twitter.com/MyCompany404"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/tt.png"></a>
-<a href="https://www.youtube.com/user/MyCompanyChannel"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/yt.png"></a>
-<a href="https://www.linkedin.com/company/mycompany404"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/ln.png"></a>
-<a href="https://www.instagram.com/mycompany404/"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/it.png"></a>
-</td>
-</tr>
-
-</tbody>
-</table>
-
-<!-- ================= SIGNATURE END ================= -->
-
 </body>
 </html>
 """
+        # Save HTML to session_state so it persists
+        st.session_state["html"] = html
+
         st.code(html, language="html")
         st.success("HTML generated successfully! Paste this in your email (HTML mode).")
 
@@ -143,82 +87,22 @@ try:
     from auth_gmail import get_gmail_service
     gmail_service = get_gmail_service()
     gmail_ready = True
-except:
+except Exception:
     gmail_service = None
     gmail_ready = False
 
 if gmail_ready:
     st.subheader("Send Test Email via Gmail API")
-
     if st.button("Send Email via Gmail"):
         if not to:
             st.error("Recipient email required!")
+        elif "html" not in st.session_state:
+            st.error("Generate the HTML snippet first!")
         else:
+            html = st.session_state["html"]
             try:
                 from email.mime.multipart import MIMEMultipart
                 from email.mime.text import MIMEText
-
-                visible_img_url = tracking_img_url(to, message_id, visible_image or None)
-                pixel_only_url = tracking_img_url(to, message_id, None)
-                click_url = tracking_click_url(to, link_target, message_id)
-                signature_img_url = tracking_img_url(to, message_id, signature_image or "2.jpeg")
-
-                html = f"""
-<!DOCTYPE HTML>
-<html>
-<body style="font-size: 10pt; font-family: Arial, sans-serif;">
-
-<p>Hello, this is a tracked email.</p>
-
-<img src="{visible_img_url}" width="200" height="200" alt="Image"><br><br>
-<a href="{click_url}">Click this tracked link</a>
-<img src="{pixel_only_url}" width="1" height="1" style="display:none;" />
-
-<br><br>
-<table cellspacing="0" cellpadding="0" border="0" 
-       style="COLOR:#000; font-family:Arial; width:500px; background: transparent;">
-<tbody>
-<tr>
-
-<td style="text-align:center;border: 2px solid #000; width:197px">
-    <img style="width:200px; height:200px; border:0;" 
-         src="{signature_img_url}" width="200" height="200" border="0">
-</td>
-
-<td style="border:2px solid #000; padding:10px 10px 10px 24px; width:303px;">
-    <span style="font-size:18pt; color:#000;">John Doe<br></span>
-    <span style="font-size:10pt; line-height:16pt; color:#000;">Sales & Marketing Director, </span>
-    <span style="font-size:10pt; font-weight:bold; color:#000;">My Company</span><br>
-    <span style="font-size:10pt;"><strong>P:</strong> (800) 555-0199<br></span>
-    <span style="font-size:10pt;"><strong>M:</strong> (800) 555-0299<br></span>
-    <span style="font-size:10pt;"><strong>E:</strong>
-        <a href="mailto:john.doe@my-company.com" 
-           style="color:#000; text-decoration:none;">john.doe@my-company.com</a><br>
-    </span>
-    <span style="font-size:10pt;"><strong>A:</strong> Street, City, ZIP, Country<br></span>
-    <a href="http://www.my-company.com" style="text-decoration:none;">
-        <strong style="color:#000; font-size:10pt;">www.my-company.com</strong>
-    </a>
-</td>
-
-</tr>
-
-<tr>
-<td colspan="2" style="padding-top:11px; text-align:right;">
-<a href="https://www.facebook.com/MyCompany"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/fb.png"></a>
-<a href="https://twitter.com/MyCompany404"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/tt.png"></a>
-<a href="https://www.youtube.com/user/MyCompanyChannel"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/yt.png"></a>
-<a href="https://www.linkedin.com/company/mycompany404"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/ln.png"></a>
-<a href="https://www.instagram.com/mycompany404/"><img width="19" src="https://www.mail-signatures.com/signature-generator/img/templates/logo-highlight/it.png"></a>
-</td>
-</tr>
-
-</tbody>
-</table>
-
-</body>
-</html>
-"""
 
                 msg = MIMEMultipart("alternative")
                 msg["to"] = to
@@ -227,15 +111,14 @@ if gmail_ready:
                 msg.attach(MIMEText(html, "html"))
 
                 encoded = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-                res = gmail_service.users().messages().send( # type: ignore
+                res = gmail_service.users().messages().send(
                     userId="me", body={"raw": encoded}
                 ).execute()
 
-                st.success("Email sent!")
+                st.success("Email sent successfully!")
                 st.json(res)
             except Exception as e:
                 st.error(f"Sending failed: {e}")
-
 else:
     st.info("Gmail sending not enabled. Add auth_gmail.py to enable sending.")
 
@@ -245,51 +128,121 @@ else:
 st.subheader("📊 Tracking Logs")
 email_query = st.text_input("Search events by email")
 
+# Initialize data safely
+data = {}
+
 if st.button("Fetch Email Activity"):
-    try:
-        res = requests.get(f"{backend_url}/tracking/by_email", params={"email": email_query}, timeout=10)
-        data = res.json()
+    if not email_query:
+        st.error("Enter an email to fetch activity!")
+    else:
+        try:
+            res = requests.get(f"{backend_url}/tracking/by_email", params={"email": email_query}, timeout=10)
+            data = res.json()
 
-        open_count = len(data.get("opens", []))
-        click_count = len(data.get("clicks", []))
-        img_read_count = len(data.get("img_reads", []))
+            open_count = len(data.get("opens", []))
+            click_count = len(data.get("clicks", []))
+            img_read_count = len(data.get("img_reads", []))
 
-        st.markdown(f"### 📌 Summary for **{email_query}**")
-        st.write(f"**Opens:** {open_count}")
-        st.write(f"**Link Clicks:** {click_count}")
-        st.write(f"**Image Loads:** {img_read_count}")
+            st.markdown(f"### 📌 Summary for **{email_query}**")
+            st.write(f"**Opens:** {open_count}")
+            st.write(f"**Link Clicks:** {click_count}")
+            st.write(f"**Image Loads:** {img_read_count}")
 
-        df_open = pd.DataFrame(data["opens"])
-        if not df_open.empty:
-            df_open["time"] = pd.to_datetime(df_open["time"])
-            df_open = df_open.sort_values("time", ascending=False)
-        st.dataframe(df_open)
-
-        df_img = pd.DataFrame(data["img_reads"])
-        if not df_img.empty:
-            df_img["time"] = pd.to_datetime(df_img["time"])
-            df_img = df_img.sort_values("time", ascending=False)
-        st.dataframe(df_img)
-
-        df_click = pd.DataFrame(data["clicks"])
-        if not df_click.empty:
-            df_click["time"] = pd.to_datetime(df_click["time"])
-            df_click = df_click.sort_values("time", ascending=False)
-        st.dataframe(df_click)
-
-    except Exception as e:
-        st.error(f"Request failed: {e}")
+            # Show detailed tables
+            for key in ["opens", "img_reads", "clicks"]:
+                df = pd.DataFrame(data.get(key, []))
+                if not df.empty:
+                    df["time"] = pd.to_datetime(df["time"])
+                    df = df.sort_values("time", ascending=False)
+                    st.markdown(f"### {key.replace('_', ' ').title()}")
+                    st.dataframe(df)
+        except Exception as e:
+            st.error(f"Request failed: {e}")
 
 if st.button("Refresh Latest Logs"):
     try:
         res = requests.get(f"{backend_url}/tracking/latest", timeout=10)
         data = res.json()
         st.markdown("### Latest Events")
-        st.dataframe(pd.DataFrame(data["events"]))
+        st.dataframe(pd.DataFrame(data.get("events", [])))
         st.markdown("### Latest Image Reads")
-        st.dataframe(pd.DataFrame(data["img_reads"]))
+        st.dataframe(pd.DataFrame(data.get("img_reads", [])))
     except Exception as e:
         st.error(f"Failed to load logs: {e}")
 
 st.markdown("---")
 st.markdown("This dashboard works with the updated FastAPI backend and supports open, click, and image tracking.")
+
+# -------------------------
+# EMAIL ENGAGEMENT ANALYTICS
+# -------------------------
+st.subheader("📊 Email Engagement Analytics")
+
+if st.button("Show Email Engagement Analytics"):
+    if not email_query:
+        st.error("Enter an email above to fetch engagement data first!")
+    else:
+        try:
+            res = requests.get(f"{backend_url}/tracking/by_email", params={"email": email_query}, timeout=10)
+            data = res.json()
+
+            opens = data.get("opens", [])
+            clicks = data.get("clicks", [])
+            delivered = 1  # Assuming 1 email sent
+
+            opened = len({o["message_id"] for o in opens if o.get("message_id")})
+            clicked = len({c["message_id"] for c in clicks if c.get("message_id")})
+            not_opened = max(delivered - opened, 0)
+
+            labels = ["Delivered", "Opened", "Not Opened", "Clicked"]
+            values = [delivered, opened, not_opened, clicked]
+
+            fig, ax = plt.subplots()
+            ax.bar(labels, values, color=["gray", "green", "red", "blue"])
+            ax.set_ylabel("Count")
+            ax.set_title(f"Email Engagement Summary for {email_query}")
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Failed to fetch analytics: {e}")
+
+st.subheader("📊 All Emails Activity")
+
+if st.button("Fetch All Emails Data"):
+    try:
+        res = requests.get(f"{backend_url}/tracking/all", timeout=10)  # Make sure your backend has this endpoint
+        all_data = res.json()
+
+        # Example keys: events, opens, clicks, img_reads
+        for key in ["events", "opens", "clicks", "img_reads"]:
+            df = pd.DataFrame(all_data.get(key, []))
+            if not df.empty:
+                df["time"] = pd.to_datetime(df["time"])
+                df = df.sort_values("time", ascending=False)
+                st.markdown(f"### {key.replace('_', ' ').title()}")
+                st.dataframe(df)
+            else:
+                st.write(f"No {key} data available.")
+    except Exception as e:
+        st.error(f"Failed to fetch all emails data: {e}")
+
+
+if st.button("Show Overall Email Analytics"):
+    try:
+        res = requests.get(f"{backend_url}/tracking/all", timeout=10)
+        all_data = res.json()
+
+        total_emails = len({e["email"] for e in all_data.get("events", [])})
+        total_opens = len(all_data.get("opens", []))
+        total_clicks = len(all_data.get("clicks", []))
+        total_img_reads = len(all_data.get("img_reads", []))
+
+        labels = ["Total Emails", "Opens", "Clicks", "Image Loads"]
+        values = [total_emails, total_opens, total_clicks, total_img_reads]
+
+        fig, ax = plt.subplots()
+        ax.bar(labels, values, color=["gray", "green", "blue", "orange"])
+        ax.set_ylabel("Count")
+        ax.set_title("Overall Email Engagement Summary")
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Failed to fetch overall analytics: {e}")

@@ -199,3 +199,15 @@ def tracking_latest(n: int = 200):
         "events": supabase.table("tracking_logs").select("*").order("time", desc=True).limit(n).execute().data,
         "img_reads": supabase.table("img_reads").select("*").order("time", desc=True).limit(n).execute().data,
     }
+
+# =========================
+# ALL EMAILS DATA
+# =========================
+@app.get("/tracking/all")
+def tracking_all():
+    return {
+        "events": supabase.table("tracking_logs").select("*").order("time", desc=True).execute().data,
+        "opens": supabase.table("tracking_logs").select("*").eq("type", "pixel_open").execute().data,
+        "clicks": supabase.table("tracking_logs").select("*").eq("type", "click").execute().data,
+        "img_reads": supabase.table("img_reads").select("*").execute().data,
+    }
