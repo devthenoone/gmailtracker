@@ -1,12 +1,9 @@
 # auth_gmail.py
 import os
+from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from dotenv import load_dotenv
-
-# ======================
-# Load ENV
 
 load_dotenv()
 
@@ -22,8 +19,10 @@ def get_gmail_service():
         scopes=SCOPES,
     )
 
-    # 🔁 Auto-refresh if expired
-    if creds.expired and creds.refresh_token:
+    if not creds.refresh_token:
+        raise Exception("Missing GOOGLE_REFRESH_TOKEN")
+
+    if creds.expired:
         creds.refresh(Request())
 
     return build("gmail", "v1", credentials=creds)
