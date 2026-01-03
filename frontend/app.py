@@ -12,7 +12,7 @@ st.title("📧 Email Tracking Dashboard (File-Based System)")
 # -------------------------
 # Backend URL
 # -------------------------
-backend_url = st.sidebar.text_input("Backend URL", value="http://localhost:8000")
+backend_url = st.sidebar.text_input("Backend URL", value="https://gmailtracker-3mia.onrender.com")
 if not backend_url.endswith("/"):
     backend_url = backend_url.rstrip("/")
 
