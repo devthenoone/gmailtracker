@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # ======================
 # Load ENV
-# ======================
+
 load_dotenv()
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
