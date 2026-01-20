@@ -211,3 +211,21 @@ def tracking_all():
         "clicks": supabase.table("tracking_logs").select("*").eq("type", "click").execute().data,
         "img_reads": supabase.table("img_reads").select("*").execute().data,
     }
+
+
+
+
+@app.post("/api/sent")
+def api_sent(
+    email: str = Query(...),
+    message_id: str = Query(...),
+    sender: str = Query(None),
+):
+    log_event("tracking_logs", {
+        "type": "sent",
+        "email": email,
+        "message_id": message_id,
+        "user_agent": sender,
+        "remote_addr": None
+    })
+    return {"status": "ok"}
