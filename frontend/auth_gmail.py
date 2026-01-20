@@ -1,86 +1,58 @@
-# auth_gmail.py
+import streamlit as st
 import os
 import json
-import streamlit as st
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.modify"
-]
-
-TOKENS_DIR = "tokens"
-
+SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
 def get_gmail_service():
-    os.makedirs(TOKENS_DIR, exist_ok=True)
+    gmail_secrets = st.secrets["gmail"]
 
-    creds = None
-    sender_email = None
-
-    # -------------------------------------------
-    # 1️⃣ Try existing tokens
-    # -------------------------------------------
-    for user_folder in os.listdir(TOKENS_DIR):
-        token_path = os.path.join(TOKENS_DIR, user_folder, "token.json")
-        if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-            if creds and creds.valid:
-                sender_email = user_folder
-                break
-            elif creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                sender_email = user_folder
-                break
-            else:
-                creds = None
-
-    # -------------------------------------------
-    # 2️⃣ OAuth flow (FIRST TIME)
-    # -------------------------------------------
-    if not creds:
-        # 🔥 WRITE credentials.json FROM STREAMLIT SECRETS
-        client_config = {
-            "installed": {
-                "client_id": st.secrets["gmail"]["client_id"],
-                "client_secret": st.secrets["gmail"]["client_secret"],
-                "auth_uri": st.secrets["gmail"]["auth_uri"],
-                "token_uri": st.secrets["gmail"]["token_uri"],
-                "redirect_uris": st.secrets["gmail"]["redirect_uris"]
-            }
+    client_config = {
+        "installed": {
+            "client_id": gmail_secrets["client_id"],
+            "client_secret": gmail_secrets["client_secret"],
+            "auth_uri": gmail_secrets["auth_uri"],
+            "token_uri": gmail_secrets["token_uri"],
+            "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
         }
+    }
 
-        with open("credentials_temp.json", "w") as f:
-            json.dump(client_config, f)
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            "credentials_temp.json",
-            SCOPES
+    # Session token reuse
+    if "gmail_token" in st.session_state:
+        creds = Credentials.from_authorized_user_info(
+            st.session_state["gmail_token"], SCOPES
         )
-        creds = flow.run_local_server(port=0)
+    else:
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=SCOPES,
+            redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+        )
 
-        # Get sender email
-        oauth2_service = build("oauth2", "v2", credentials=creds)
-        user_info = oauth2_service.userinfo().get().execute()
-        sender_email = user_info["email"]
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            prompt="consent"
+        )
 
-        # Save token per user
-        user_dir = os.path.join(TOKENS_DIR, sender_email)
-        os.makedirs(user_dir, exist_ok=True)
+        st.info("🔐 Authenticate Gmail")
+        st.markdown(f"[Click here to login with Google]({auth_url})")
 
-        with open(os.path.join(user_dir, "token.json"), "w") as f:
-            f.write(creds.to_json())
+        auth_code = st.text_input("Paste authorization code here")
 
-        os.remove("credentials_temp.json")
+        if not auth_code:
+            st.stop()
 
-    # -------------------------------------------
-    # 3️⃣ Return Gmail service + sender
-    # -------------------------------------------
+        flow.fetch_token(code=auth_code)
+        creds = flow.credentials
+
+        st.session_state["gmail_token"] = json.loads(creds.to_json())
+
     service = build("gmail", "v1", credentials=creds)
+    sender_email = service.users().getProfile(userId="me").execute()["emailAddress"]
+
     return service, sender_email
 
 
