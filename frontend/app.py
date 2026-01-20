@@ -1,4 +1,3 @@
-# streamlit_app.py
 import streamlit as st
 import requests
 import pandas as pd
@@ -76,10 +75,15 @@ with c2:
 # =========================================================
 st.subheader("📤 Send via Gmail")
 
-from auth_gmail import get_gmail_service
+from auth_gmail import get_gmail_service  # ← uses st.secrets["gmail"]
 
 if st.button("Send Emails"):
-    gmail_service, sender_email = get_gmail_service()
+    try:
+        gmail_service, sender_email = get_gmail_service()
+    except Exception as e:
+        st.error("Failed to authenticate Gmail")
+        st.exception(e)
+        st.stop()
 
     raw_emails = [e.strip() for e in to_raw.split(",") if e.strip()]
     valid, invalid = [], []
@@ -135,22 +139,31 @@ if st.button("Send Emails"):
             msg.attach(MIMEText(html, "html"))
 
             raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
             gmail_service.users().messages().send(
                 userId="me", body={"raw": raw}
             ).execute()
 
             requests.post(
                 f"{backend_url}/api/sent",
-                params={"email": email, "message_id": message_id, "sender": sender_email}
+                params={
+                    "email": email,
+                    "message_id": message_id,
+                    "sender": sender_email
+                }
             )
 
             sent += 1
 
-        except Exception:
+        except Exception as e:
             not_delivered += 1
             requests.post(
                 f"{backend_url}/api/not-delivered",
-                params={"email": email, "message_id": message_id, "sender": sender_email}
+                params={
+                    "email": email,
+                    "message_id": message_id,
+                    "sender": sender_email
+                }
             )
 
     st.success(f"Sender: {sender_email} | Sent: {sent} | Not Delivered: {not_delivered}")
@@ -177,11 +190,14 @@ if st.button("Show Delivery Chart"):
     ax.set_title("Email Engagement Funnel")
 
     for b in bars:
-        ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.1,
-                int(b.get_height()), ha="center")
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.1,
+            int(b.get_height()),
+            ha="center"
+        )
 
     st.pyplot(fig)
-
 
 # =========================================================
 # FETCH ALL LOG DATA
@@ -198,6 +214,7 @@ if st.button("Fetch ALL Tracking Data"):
             df["time"] = pd.to_datetime(df["time"])
             st.markdown(f"### {key.title()}")
             st.dataframe(df.sort_values("time", ascending=False))
+
 
 # # streamlit_app.py
 # import os
